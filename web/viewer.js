@@ -8,6 +8,10 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
 
 const W = 512, H = 512;
+// Which model/texture to show. Default = YOUR model; override with ?model=../data/pusaka_model.obj&tex=../data/relief.ppm
+const _q = new URLSearchParams(location.search);
+const MODEL_URL = _q.get("model") || "../data/mymodel.obj";
+const TEX_URL = _q.get("tex") || "../data/mytex.ppm";
 const canvas = document.getElementById("c");
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
@@ -26,8 +30,10 @@ controls.target.set(0, 0.7, 0);
 controls.update();
 
 // --- lights: ambient 0.15 + one directional along (0.4, 0.9, 0.6) ---
-scene.add(new THREE.AmbientLight(0xffffff, 0.15));
-const sun = new THREE.DirectionalLight(0xffffff, 0.85);
+// three.js r155+ no longer multiplies light intensity by PI (physically-based units), so a Lambert
+// surface comes out 1/PI darker than raster3d.py's  ambient + (1-ambient)*max(0, n.L).  Multiply by PI to match.
+scene.add(new THREE.AmbientLight(0xffffff, 0.15 * Math.PI));
+const sun = new THREE.DirectionalLight(0xffffff, 0.85 * Math.PI);
 sun.position.set(0.4, 0.9, 0.6);
 scene.add(sun);
 
@@ -60,8 +66,8 @@ async function loadPPMTexture(url) {
 
 let mesh;
 Promise.all([
-  new OBJLoader().loadAsync("../data/pusaka_model.obj"),
-  loadPPMTexture("../data/relief.ppm"),
+  new OBJLoader().loadAsync(MODEL_URL),
+  loadPPMTexture(TEX_URL),
 ]).then(([obj, tex]) => {
   const mat = new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide });
   obj.traverse((c) => { if (c.isMesh) c.material = mat; });
@@ -87,6 +93,9 @@ document.getElementById("wire").addEventListener("click", () => {
 });
 
 document.getElementById("export").addEventListener("click", () => {
+  camera.position.set(2.6, 2.0, 3.4);
+  controls.target.set(0, 0.7, 0);
+  controls.update();
   renderer.render(scene, camera);
   const gl = renderer.getContext();
   const px = new Uint8Array(W * H * 4);
@@ -100,6 +109,6 @@ document.getElementById("export").addEventListener("click", () => {
   const header = new TextEncoder().encode(`P6\n${W} ${H}\n255\n`);
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([header, body]));
-  a.download = "temple_three.ppm";
+  a.download = "mymodel_three.ppm";
   a.click();
 });
