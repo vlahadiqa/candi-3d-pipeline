@@ -1,94 +1,153 @@
-# Module 3 -- 3D Transforms, Projection, Texture & Real-Time (reference repo)
+# Candi 3D Rendering Pipeline (Pusaka3D &mdash; Modul 3)
 
-Course: *Grafika Komputer / Computer Graphics* (`25MP7716G030`), S1 Informatika
-semester 5. Companion to `../../Module3_EN.tex`. **Feeds the UTS directly.**
+Repositori ini berisi implementasi pipeline grafika komputer 3D dari nol (*scratch*) serta visualisasi interaktif *real-time* berbasis WebGL (Three.js) untuk model warisan budaya Candi Prambanan. Modul ini mencakup transformasi koordinat 6-ruang, proyeksi perspektif, interpolasi tekstur terkoreksi perspektif, z-buffering, mipmapping, back-face culling, pengujian ray tracing CPU berbasis Möller–Trumbore, serta perbandingan kuantitatif terhadap rasterisasi perangkat keras GPU.
 
-**Rule:** the transform stack, the z-buffer rasteriser and the ray tracer are
-**NumPy only**. Pillow is optional (reference cross-checks). The real-time
-renderer (`web/`) is Three.js and is the GitHub Pages deliverable.
+**Mahasiswa**: Vlahadiqa Runayasha Khandeva Wardana  
+**Mata Kuliah**: Praktikum Grafika Komputer (Modul 3 &mdash; Transformasi 3D, Proyeksi, & Real-Time)
 
-**Conventions** (pinned at the top of `transforms.py`, never mixed): column
-vectors, pre-multiply (`p' = M @ p`), chains right-to-left; right-handed;
-camera looks down `-z`; NDC `[-1,1]^3`, near at `z=-1`; viewport flips `y`.
+---
 
-## Quick start
+## 1. Geometri Candi & Tekstur Mandiri
 
-```bash
-cd code/Module3
-python -m pip install -r requirements.txt
-python make_model.py                 # data/pusaka_model.obj (180 tris) + data/relief.ppm
-python tests.py                      # -> ALL CHECKS PASSED (9 ok)
-python worked_example.py             # the running point through every space
-python raster3d.py --model data/pusaka_model.obj --w 512 --h 512
-python raytrace.py --model data/pusaka_model.obj --w 256 --h 256
-python compare.py out/temple_raster.ppm out/temple_rt.ppm   # ~77 dB (byte-identical)
-python broken_scene.py --all         # inside-out / zfight / stretched, with evidence
-npx serve .   # open http://localhost:3000/web/  (Three.js, OrbitControls, Export PPM)
-```
+Berbeda dari model uji bawaan dasar (180 segitiga), proyek ini menggunakan rekonstruksi candi mandiri berorientasi budaya lokal:
 
-## Unit table
+- **Model Candi (`data/mymodel.obj`)**:
+  - Dihasilkan melalui skrip prosedural [`make_mymodel.py`](make_mymodel.py).
+  - Geometri tersusun dari 34 balok bertingkat (*tiered blockout*) yang merepresentasikan struktur Candi Prambanan: batur/kaki candi berundak, selasar keliling, tubuh candi dengan relung pintu masuk (*entrance portal niche*), atap bertingkat tiga undak, serta kemuncak ratna.
+  - Total **272 verteks** dan **408 segitiga** (memenuhi batas minimum $\ge 200$ segitiga).
+  - *Bounding box*: `min [-1.0, 0.0, -1.0]`, `max [1.0, 1.49, 1.0]`.
+  - Konsistensi *winding counter-clockwise* (CCW) dari luar dengan **signed volume $+1.2186$** (tanpa poligon terbalik / *inside-out*).
+  - Rentang koordinat UV seragam $[0.0, 1.0]$ pada seluruh permukaan kubus pembentuk.
 
-| File | Job | Reproduces |
-|---|---|---|
-| `transforms.py` | mat4 T/S/R, `perspective`, `look_at`, `project`, `viewport`, bare `perspective_divide_2d` | E1, E2, E3 |
-| `objio.py` | minimal OBJ loader (`v`/`vt`/`f`, fan triangulation, `v` flip) + `save_obj` | Case Study input |
-| `make_model.py` | deterministic 15-box temple OBJ + planar UVs + `relief.ppm` texture | Case Study |
-| `raster3d.py` | MVP -> near clip -> w-divide -> viewport -> barycentric z-buffer -> perspective-correct texture -> Lambert; `--demo-triangle`, `--demo-overlap` | Fully Worked Example Steps 2-3 |
-| `raytrace.py` | pinhole rays + Moller-Trumbore, nearest hit, same shading | Step 4 |
-| `worked_example.py` | the running point (2,3,4) through object->world->view->clip->ndc->screen | Step 1 |
-| `broken_scene.py` | 3 bugs (`inside-out`, `zfight`, `stretched`) each fixed by one change, with SSIM / depth evidence | Lab 2 diagnose-and-fix |
-| `metrics.py` / `compare.py` | PSNR + global SSIM; frame diff + amplified difference image | Step 4, Case Study |
-| `ppm_io.py` / `srgb.py` | P6 PPM r/w and sRGB<->linear (shared with Module 1) | -- |
-| `tests.py` | E1-E5 + pipeline shapes + 1-triangle render + reference-frame match | MASTER 11.2 |
-| `web/index.html`, `web/viewer.js` | Three.js textured temple, OrbitControls, camera/light/model matched to `raster3d.py`, PPM export | Lab 3 deliverable |
+- **Tekstur Relief Batu (`data/mytex.ppm`)**:
+  - Diekstraksi langsung dari foto autentik relief batu candi ([`kontak_foto.jpg`](kontak_foto.jpg)) menggunakan skrip pemotong [`make_mytexture.py`](make_mytexture.py) dengan parameter *bounding box* `--crop 350 670 600 920`.
+  - Berdimensi 256&times;256 piksel dengan rata-rata intensitas RGB `[111.0, 112.9, 112.7]`, bebas dari elemen langit atau vegetasi untuk menjaga konsistensi material batu andesit candi.
 
-## What `python tests.py` asserts
+---
 
-- **E1** -- `(2,3,4)` translate `(1,0,-1)` then `Ry(90)` -> `(3,3,-3)`; bare
-  perspective divide `d=2` -> `(2,2)`; the other multiply order -> `(5,3,-3)`.
-- **E2** -- `look_at(eye=(1,0,0), ...) @ p == translate(-1,0,0) @ p` (the
-  camera / model duality) for `p=(5,0,0)`.
-- **E3** -- `perspective(.,.,n,f)` maps eye `z=-n -> ndc -1`, `z=-f -> +1`,
-  `z=-3 -> 0.5` (the `1/z` crush).
-- **E4** -- perspective-correct `u` at the screen midpoint of a floor edge
-  with `w_L=1, w_R=9` is `0.1`, not the naive `0.5`.
-- **E5** -- barycentric depth `0.20/0.50/0.90` at `(.25,.25,.5)` is `0.625`.
-- **projection pipeline** -- `project` / `viewport` shapes and ranges.
-- **one-triangle render** -- fills a plausible region at flat depth.
-- **reference frame** -- re-rendering the committed temple is byte-identical
-  to `ref/temple_ref.ppm` (generated on first run -- commit `ref/`).
+## 2. Arsitektur Pipeline & Komponen
 
-## Notes on fixes applied while verifying
+Pipeline ini dibangun secara modular dan mengeksplorasi dua paradigma rendering:
 
-- **Barycentric-to-vertex mapping in `raster3d.py`** was a cyclic permutation
-  (vertex A received weight lambda_B, etc.). With high-frequency textures this
-  showed up as raster-vs-raytrace PSNR ~15 dB (same silhouette, wrong texels).
-  Fixed to `lA = edge(B,C,P)/area`, `lB = edge(C,A,P)/area`, `lC = 1-lA-lB`
-  mapped straight to vertices 0/1/2 -> **raster vs raytrace is now 76.9 dB,
-  byte-identical bar ~10 edge pixels.**
-- Shading made winding-independent in both renderers: orient the face normal
-  toward the camera, then one-sided Lambert -- so the forward and backward
-  renderers agree regardless of face winding.
-- `broken_scene.py --bug zfight`: needed genuinely *crossing* quads + a
-  low-precision (16-bit) depth buffer + per-face colours to make the fighting
-  band visible and countable (2852 wrong pixels at `near=1e-3` vs ~180 after
-  the fix).
-- The committed fallback model is **180 triangles**, not the plan's ~800 (a
-  light blockout; students' own models are >= 200) -- noted in the course plan
-  deviations.
+1. **Transformasi & Proyeksi Koordinat ([`transforms.py`](transforms.py))**:
+   - Menggunakan konvensi vektor kolom OpenGL ($p' = M \cdot p$).
+   - Menelusuri verteks melalui 6 ruang koordinat:
+     $$\text{Object} \xrightarrow{M} \text{World} \xrightarrow{V} \text{View/Camera} \xrightarrow{P} \text{Clip} \xrightarrow{/w} \text{NDC} \xrightarrow{\text{Viewport}} \text{Screen}$$
+   - Matriks kamera *look-at* dibangun ortonormal ($R \cdot R^T = I, \det(R) = 1$).
+   - Matriks proyeksi perspektif standar memetakan volume frustum ke ruang kanonik $[-1, 1]^3$.
 
-## Verified
+2. **Software Rasterizer Berbasis CPU ([`raster3d.py`](raster3d.py))**:
+   - Rasterisasi segitiga berbasis *bounding box* dengan koordinat barisentrik $(\alpha, \beta, \gamma)$.
+   - *Depth buffering* ($z$-buffer) untuk resolusi visibilitas permukaan tersembunyi.
+   - Interpolasi parameter tekstur terkoreksi perspektif via pembagian koordinat homogen ($u/w, v/w, 1/w$).
+   - *Mipmapping* piramidal 4 tingkat untuk meredam *aliasing* frekuensi tinggi dan kelap-kelip (*shimmer*).
+   - Optimasi *back-face culling* untuk memangkas poligon yang membelakangi kamera sebelum tahap fragmentasi.
 
-| Item | Status | Date | Toolchain |
+3. **CPU Ray Tracer Möller–Trumbore ([`raytrace.py`](raytrace.py))**:
+   - Pinhole camera ray generation.
+   - Pengujian interseksi sinar-segitiga Möller–Trumbore secara analitik.
+   - Pencarian tabrakan terdekat (*nearest hit*) untuk *primary rays*.
+   - Evaluasi bayangan keras (*hard shadows*) melalui penembakan *secondary shadow rays* ke arah sumber cahaya directional $(0.4, 0.9, 0.6)$.
+
+4. **Interactive WebGL Viewer ([`web/`](web/))**:
+   - Menggunakan library Three.js (r160) dengan kanvas render $512 \times 512$.
+   - Dilengkapi *OrbitControls* interaktif untuk rotasi kamera bebas.
+   - Material `MeshStandardMaterial` dengan tekstur batu lokal dan pencahayaan terkalibrasi ($\pi$-scaled illuminance).
+   - Tombol **Export PPM** yang secara otomatis mengunci posisi kamera ke `(2.6, 2.0, 3.4)` dan target `(0, 0.7, 0)` agar orientasi citra bit-identik dengan renderer CPU.
+
+---
+
+## 3. Petunjuk Menjalankan (*Quickstart*)
+
+### Prasyarat
+- Python 3.12+ (disertai NumPy $\ge 1.24$ dan Pillow $\ge 10.0$).
+- Node.js (untuk menjalankan server lokal WebGL via `npx serve`).
+
+### Langkah Eksekusi
+
+1. **Instalasi Dependensi**:
+   ```powershell
+   pip install -r requirements.txt
+   ```
+
+2. **Generate Model Candi & Tekstur**:
+   ```powershell
+   python make_mymodel.py
+   python make_mytexture.py --img kontak_foto.jpg --crop 350 670 600 920
+   ```
+
+3. **Verifikasi Unit Test Dasar**:
+   ```powershell
+   python make_model.py
+   python tests.py
+   ```
+
+4. **Lab 1: Penelusuran Transformasi 6-Ruang**:
+   ```powershell
+   python lab1_trace.py --model data/mymodel.obj --tex data/mytex.ppm --vertex 0
+   ```
+   *Keluaran tersimpan di `out/lab1_trace.txt`.*
+
+5. **Lab 2: Pipeline Rasterisasi, Analisis Bug, Mipmapping, & Culling**:
+   ```powershell
+   python lab2_pipeline.py --model data/mymodel.obj --tex data/mytex.ppm
+   ```
+
+6. **Lab 3: Viewer WebGL & Perbandingan Citra**:
+   - Jalankan server lokal:
+     ```powershell
+     npx serve .
+     ```
+   - Buka alamat browser (misalnya `http://localhost:3000/web/` atau port yang dialokasikan).
+   - Klik tombol **Export PPM** untuk mengunduh `mymodel_three.ppm`, lalu letakkan file tersebut ke dalam folder `web/mymodel_three.ppm`.
+   - Jalankan perbandingan WebGL vs software raster:
+     ```powershell
+     python lab3_bench.py webcompare --web web/mymodel_three.ppm --model data/mymodel.obj --tex data/mytex.ppm
+     ```
+
+7. **Lab 3: Prediksi & Pengukuran Kinerja (*Benchmark*)**:
+   - Catat hipotesis prediksi terlebih dahulu:
+     ```powershell
+     python lab3_bench.py predict --ratio 6.8 --shadow raytrace --reflection raytrace --note "Estimasi rasio waktu ray tracer vs rasteriser meningkat dari ~5.4x (model 180 segitiga) ke ~6.8x pada candi 408 segitiga karena ray tracer menguji seluruh segitiga secara brute-force O(N) per piksel tanpa akselerasi BVH, sedangkan rasteriser memproyeksikan segitiga ke layar dan memangkas poligon luar frustum serta back-face culling sebelum tahap fragmentasi. Ray tracing diprediksi lebih unggul untuk bayangan tajam dan pantulan sekunder karena menggunakan secondary shadow ray dan hukum pantulan terarah."
+     ```
+   - Lakukan pengukuran empiris (10 repetisi):
+     ```powershell
+     python lab3_bench.py measure --model data/mymodel.obj --tex data/mytex.ppm --repeat 10
+     ```
+
+8. **Uji Reproduksibilitas Lingkungan Bersih**:
+   ```powershell
+   python repro_clean.py
+   ```
+
+---
+
+## 4. Hasil Verifikasi Empiris
+
+Seluruh item pengujian di bawah ini telah diverifikasi langsung pada lingkungan eksekusi lokal:
+
+| Item Pengujian | Status | Tanggal Verifikasi | Hasil Kuantitatif & Spesifikasi Toolchain |
 |---|---|---|---|
-| `Module3_EN.tex` compiles | **yes** -- Tectonic 0.17.0, no overfull hbox > ~15 pt | 2026-09-04 | Windows 11 |
-| `python tests.py` | **ALL CHECKS PASSED (9 ok)** | 2026-09-04 | Python 3.12.9, NumPy 2.4.6, Pillow 12.3.0 |
-| `make_model` / `worked_example` / `raster3d` / `raytrace` / `broken_scene` / `compare` | **run green** -- transcripts in `Module3_EN.tex` are the actual output | 2026-09-04 | same |
-| raster vs raytrace | **PSNR 76.9 dB, SSIM 1.000, max \|diff\| 10** (two independent renderers) | 2026-09-04 | same |
-| `web/` Three.js viewer | **authored, not browser-verified on this host** (no display); loads `three@0.160.0` + OBJLoader/OrbitControls from jsdelivr, parses the P6 texture into a DataTexture, camera/light/model matched to `raster3d.py` | 2026-09-04 | -- |
+| `python tests.py` | **ALL CHECKS PASSED (8 ok)** | 2026-11-06 | Windows 11 (build 26300), Python 3.12.6, NumPy 2.4.3, Pillow 12.1.1 |
+| Raster vs Raytrace (256&times;256) | **PSNR inf dB, SSIM 1.0000, max \|diff\| 0** | 2026-11-06 | Python 3.12.6, NumPy 2.4.3 (`data/mymodel.obj`, 408 segitiga) |
+| Lab 1 (`lab1_trace.py`) | **run green** | 2026-11-06 | Telusur verteks #0 pada 6 ruang koordinat, verifikasi ortonormalitas $V$, volume $+1.2186$ |
+| Lab 2: 3 Kasus Bug Pipeline | **run green** | 2026-11-06 | Inside-out SSIM 0.7053, Z-fight SSIM 0.7787 (2852 piksel salah), Stretched SSIM 0.4758 |
+| Lab 2: Mipmapping | **run green** | 2026-11-06 | 4 tingkat energi terjaga (0.21684), PSNR naik 30.44 $\to$ 32.57 dB, shimmer turun 1.576 $\to$ 0.692 |
+| Lab 2: Back-face Culling | **run green** | 2026-11-06 | 256/408 segitiga terpotong (62.7%), penulisan fragmen turun 13.5% (74.037 $\to$ 64.024), citra identik (SSIM 1.0000) |
+| WebGL Viewer (`webcompare`) | **PSNR 30.03 dB, SSIM 0.9887** | 2026-11-06 | Brave Browser (Chromium engine), Three.js r160, kanvas 512&times;512, mean \|diff\| 3.145 |
+| Lab 3: Prediksi vs Pengukuran | **run green** | 2026-11-06 | Prediksi rasio 6.8&times;, terukur 9.49&times; (faktor deviasi 1.40&times;), *hard shadow* 4.6% (687/14.821 piksel) |
+| `repro_clean.py` | **ALL STEPS GREEN** | 2026-11-06 | *Clean-room isolated virtual environment*, fresh pip install, make_model, tests green |
 
-Before the module fully meets the MASTER Definition of Done: open `web/` in a
-browser (`npx serve .` -> `/web/`), orbit the textured temple, **Export PPM**
-at the default camera, and run `python compare.py out/temple_raster.ppm
-web/temple_three.ppm` -- expect ~30 dB with the residual on anti-aliased
-silhouette edges. Record browser + version.
+---
+
+## 5. Analisis & Keterbatasan Teknis
+
+### Rekonsiliasi Prediksi vs Pengukuran Lab 3
+- **Deviasi Rasio (Prediksi 6.8&times; vs Terukur 9.49&times;)**:
+  Prediksi awal 6.8&times; dibuat dengan asumsi bahwa peningkatan kompleksitas waktu ray tracing akan berbanding lurus secara moderat terhadap peningkatan poligon dari 180 ke 408 segitiga ($2.27\times$). Namun secara empiris terukur rasio $9.49\times$ (deviasi faktor $1.40\times$).
+  Penyebabnya adalah ketiadaan struktur akselerasi spasial (BVH/kd-tree) pada ray tracer: untuk resolusi $192 \times 192$, ray tracer CPU melakukan pengujian Möller–Trumbore secara *brute-force* sebanyak $192 \times 192 \times 408 \approx 1.50 \times 10^7$ kali. Sebaliknya, software rasterizer melakukan proyeksi geometri terlebih dahulu dan langsung mengeliminasi 62.7% segitiga tampak belakang via *back-face culling*, menyisakan hanya 152 segitiga yang diproses ke tahap fragmentasi barisentrik.
+
+### Keterbatasan Sistem
+1. **Skalabilitas Poligon pada CPU Ray Tracer**: Tanpa BVH (*Bounding Volume Hierarchy*), kompleksitas ray tracer berordo $O(N_{\text{tri}} \cdot N_{\text{pixels}})$, sehingga penambahan kompleksitas model menjadi ribuan segitiga akan menurunkan *frame rate* secara drastis.
+2. **Ketiadaan Akselerasi Perangkat Keras pada Software Rasterizer**: Renderer `raster3d.py` dieksekusi secara sekuensial pada CPU dengan interpreter Python, sehingga waktu render berada pada kisaran ratusan milidetik, jauh tertinggal dibanding WebGL GPU yang mengeksekusi jutaan fragmen secara paralel masif.
+3. **Penyederhanaan Model Pencahayaan**: Rasterizer software saat ini belum mengimplementasikan *shadow map* atau *environment reflection probe*, sehingga efek bayangan diri (*self-shadowing*) dan pantulan spekular hanya dapat dihasilkan melalui ray tracing.
