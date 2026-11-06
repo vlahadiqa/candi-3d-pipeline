@@ -1,0 +1,7 @@
+{
+  "time": "2026-11-06T18:25:49",
+  "predicted_ratio_rt_over_raster": 6.8,
+  "predicted_better_shadows": "raytrace",
+  "predicted_better_reflections": "raytrace",
+  "note": "Estimasi rasio waktu ray tracer vs rasteriser meningkat dari ~5.4x (model 180 segitiga) ke ~6.8x pada candi 408 segitiga karena ray tracer menguji seluruh segitiga secara brute-force O(N) per piksel tanpa akselerasi BVH, sedangkan rasteriser memproyeksikan segitiga ke layar dan memangkas poligon luar frustum serta back-face culling sebelum tahap fragmentasi. Ray tracing diprediksi lebih unggul untuk bayangan tajam dan pantulan sekunder karena menggunakan secondary shadow ray dan hukum pantulan terarah."
+}

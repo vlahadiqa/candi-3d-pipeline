@@ -1,0 +1,43 @@
+# clean-repro transcript  2026-11-06T18:27:57
+# host: Windows-11-10.0.26300-SP0   python 3.12.6
+# copied C:\Users\ADVAN WORKPRO\Downloads\Module3_repo -> C:\Users\ADVANW~1\AppData\Local\Temp\m3_clean_lr9qhog0\proj (excluding out/, __pycache__, venvs, .git)
+
+$ C:\Users\ADVAN WORKPRO\AppData\Local\Programs\Python\Python312\python.exe -m venv C:\Users\ADVANW~1\AppData\Local\Temp\m3_clean_lr9qhog0\venv
+Actual environment location may have moved due to redirects, links or junctions.
+  Requested location: "C:\Users\ADVANW~1\AppData\Local\Temp\m3_clean_lr9qhog0\venv\Scripts\python.exe"
+  Actual location:    "C:\Users\ADVAN WORKPRO\AppData\Local\Temp\m3_clean_lr9qhog0\venv\Scripts\python.exe"
+[exit 0  10.7s]
+
+$ C:\Users\ADVANW~1\AppData\Local\Temp\m3_clean_lr9qhog0\venv\Scripts\python -m pip install -r requirements.txt
+Collecting numpy>=1.24 (from -r requirements.txt (line 6))
+  Using cached numpy-2.5.4-cp312-cp312-win_amd64.whl.metadata (6.6 kB)
+Collecting pillow>=10.0 (from -r requirements.txt (line 7))
+  Using cached pillow-13.0.0-cp312-cp312-win_amd64.whl.metadata (9.3 kB)
+Using cached numpy-2.5.4-cp312-cp312-win_amd64.whl (12.6 MB)
+Using cached pillow-13.0.0-cp312-cp312-win_amd64.whl (7.3 MB)
+Installing collected packages: pillow, numpy
+Successfully installed numpy-2.5.4 pillow-13.0.0
+
+[notice] A new release of pip is available: 24.2 -> 26.3
+[notice] To update, run: C:\Users\ADVANW~1\AppData\Local\Temp\m3_clean_lr9qhog0\venv\Scripts\python.exe -m pip install --upgrade pip
+[exit 0  21.7s]
+
+$ C:\Users\ADVANW~1\AppData\Local\Temp\m3_clean_lr9qhog0\venv\Scripts\python make_model.py
+wrote data/pusaka_model.obj  (120 verts, 180 triangles)
+wrote data/relief.ppm  (256x256, 196623 bytes)
+[exit 0  1.7s]
+
+$ C:\Users\ADVANW~1\AppData\Local\Temp\m3_clean_lr9qhog0\venv\Scripts\python tests.py
+OK   E1  running point (2,3,4) -> (3,3,-3); divide d=2 -> (2,2); order matters
+OK   E2  camera +x == model -x (identical points)
+OK   E3  perspective: z=-n -> ndc -1 ; z=-f -> ndc +1 ; z=-3 -> 0.5
+OK   E4  perspective-correct u at screen centre = 0.1 (naive 0.5)
+OK   E5  barycentric depth 0.20/0.50/0.90 at (.25,.25,.5) = 0.625
+OK   projection pipeline shapes + viewport
+OK   one-triangle z-buffer render fills a plausible region, flat depth
+OK   temple frame matches ref/temple_ref.ppm (byte-identical on re-render)
+
+ALL CHECKS PASSED
+[exit 0  0.6s]
+
+# RESULT: ALL STEPS GREEN
