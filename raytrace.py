@@ -107,9 +107,10 @@ def main():
     ap.add_argument("--w", type=int, default=256)
     ap.add_argument("--h", type=int, default=256)
     ap.add_argument("--out", default="out/temple_rt.ppm")
+    ap.add_argument("--tex", default="data/relief.ppm", help="texture PPM (default: the lecturer's relief.ppm)")
     args = ap.parse_args()
     mesh = load_obj(args.model)
-    tex = read_ppm("data/relief.ppm") if os.path.exists("data/relief.ppm") else None
+    tex = read_ppm(args.tex) if os.path.exists(args.tex) else None
     model = translate((0, 0, 0)) @ rot_y(35) @ scale((1.4, 1.4, 1.4))
     img, t = render(mesh, w=args.w, h=args.h, tex_u8=tex, model=model)
     os.makedirs(os.path.dirname(args.out), exist_ok=True)

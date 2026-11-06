@@ -189,7 +189,7 @@ def _demo_triangle(w, h):
     pos = np.array([[-0.8, -0.6, -2.0], [0.9, -0.7, -3.5], [-0.2, 0.9, -2.5]])
     uv = np.array([[0, 0], [1, 0], [0.5, 1.0]])
     m = Mesh(pos, uv, [[0, 1, 2]], [[0, 1, 2]])
-    tex = read_ppm("data/relief.ppm") if os.path.exists("data/relief.ppm") else None
+    tex = read_ppm(args.tex) if os.path.exists(args.tex) else None
     P = perspective(60, w / h, 1.0, 50.0)
     V = np.eye(4)
     clip, ndc = _project(P, V, np.eye(4), pos)
@@ -252,6 +252,7 @@ def main():
     ap.add_argument("--w", type=int, default=512)
     ap.add_argument("--h", type=int, default=512)
     ap.add_argument("--out", default="out/temple_raster.ppm")
+    ap.add_argument("--tex", default="data/relief.ppm", help="texture PPM (default: the lecturer's relief.ppm)")
     ap.add_argument("--demo-triangle", action="store_true")
     ap.add_argument("--demo-overlap", action="store_true")
     args = ap.parse_args()
@@ -264,7 +265,7 @@ def main():
     if not args.model:
         raise SystemExit("give --model, or --demo-triangle / --demo-overlap")
     mesh = load_obj(args.model)
-    tex = read_ppm("data/relief.ppm") if os.path.exists("data/relief.ppm") else None
+    tex = read_ppm(args.tex) if os.path.exists(args.tex) else None
     model = translate((0, 0, 0)) @ rot_y(35) @ scale((1.4, 1.4, 1.4))
     col, dep, filled = render(mesh, w=args.w, h=args.h, tex_u8=tex, model=model)
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
