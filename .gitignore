@@ -1,0 +1,6 @@
+__pycache__/
+out/
+*.pyc
+_tmp_selftest.*
+web/temple_three.ppm
+web/*_three.ppm

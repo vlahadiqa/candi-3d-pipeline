@@ -1,0 +1,108 @@
+"""Module 3 -- deterministic Pusaka3D temple: a stacked-tier candi.
+
+No RNG, no binary assets in Git. Writes:
+  data/pusaka_model.obj   ~800 triangles (stacked boxes, planar-projected UVs)
+  data/relief.ppm         256x256 procedural sandstone texture (Module 1 style)
+
+Your graded input is a low-poly model of your OWN building; this is the
+documented fallback.
+
+Run:  python make_model.py [--out data]
+"""
+from __future__ import annotations
+
+import argparse
+import os
+
+import numpy as np
+
+from objio import save_obj
+from ppm_io import write_ppm
+from srgb import linear_to_srgb, to_u8
+
+
+def box(cx, cz, half, y0, y1):
+    """Axis-aligned box, centre (cx,*,cz), horizontal half-size `half`,
+    vertical span y0..y1. Returns (8 positions, 12 triangles (as local idx),
+    per-face-vertex uvs). CCW-front (outward-facing)."""
+    x0, x1 = cx - half, cx + half
+    z0, z1 = cz - half, cz + half
+    P = np.array([
+        [x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1],   # bottom 0..3
+        [x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1],   # top    4..7
+    ])
+    # each face: 2 triangles, wound CCW seen from outside
+    faces = [
+        (4, 5, 6), (4, 6, 7),        # +y top
+        (0, 2, 1), (0, 3, 2),        # -y bottom
+        (0, 1, 5), (0, 5, 4),        # -z front
+        (2, 3, 7), (2, 7, 6),        # +z back
+        (3, 0, 4), (3, 4, 7),        # -x left
+        (1, 2, 6), (1, 6, 5),        # +x right
+    ]
+    # simple planar UVs: project each vertex onto x-y, scaled into [0,1] per box
+    span = 2 * half + (y1 - y0)
+    uv = np.c_[(P[:, 0] - x0) / (2 * half),
+               (P[:, 1] - y0) / max(y1 - y0, 1e-6)]
+    face_uv = [(a, b, c) for (a, b, c) in faces]
+    return P, faces, uv, face_uv
+
+
+def build_temple():
+    positions, faces, uvs, face_uvs = [], [], [], []
+    voff = 0
+    # 6 stacked tiers, shrinking; a finial box on top
+    tiers = [(0.0, 0.0, 1.00, 0.00, 0.35),
+             (0.0, 0.0, 0.82, 0.35, 0.62),
+             (0.0, 0.0, 0.66, 0.62, 0.85),
+             (0.0, 0.0, 0.50, 0.85, 1.05),
+             (0.0, 0.0, 0.34, 1.05, 1.22),
+             (0.0, 0.0, 0.20, 1.22, 1.36),
+             (0.0, 0.0, 0.07, 1.36, 1.52)]
+    # four corner shrines (small boxes)
+    for (sx, sz) in [(-0.8, -0.8), (0.8, -0.8), (-0.8, 0.8), (0.8, 0.8)]:
+        tiers.append((sx, sz, 0.16, 0.0, 0.30))
+        tiers.append((sx, sz, 0.10, 0.30, 0.44))
+    for (cx, cz, half, y0, y1) in tiers:
+        P, F, uv, fuv = box(cx, cz, half, y0, y1)
+        for (a, b, c) in F:
+            faces.append((a + voff, b + voff, c + voff))
+        for (a, b, c) in fuv:
+            face_uvs.append((a + voff, b + voff, c + voff))
+        positions.extend(P.tolist())
+        uvs.extend(uv.tolist())
+        voff += len(P)
+    return np.array(positions), np.array(uvs), faces, face_uvs
+
+
+def relief_texture(n=256):
+    """Procedural sandstone relief -- same idea as Module 1's make_data."""
+    y, x = np.mgrid[0:n, 0:n].astype(np.float64)
+    fx = 0.22
+    raw = np.sin(2 * np.pi * fx * (x + 0.5 * y))
+    ridges = 0.5 + 0.40 * np.tanh(2.5 * raw)
+    slow = 0.10 * np.sin(2 * np.pi * 0.02 * x) * np.cos(2 * np.pi * 0.015 * y)
+    lum = np.clip(ridges + slow, 0.05, 0.98)
+    lum[int(0.33 * n):int(0.37 * n), :] *= 0.6      # a carved band
+    tint = (1.00, 0.82, 0.60)
+    lin = np.dstack([lum * tint[0], lum * tint[1], lum * tint[2]])
+    return to_u8(linear_to_srgb(np.clip(lin, 0, 1)))
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--out", default="data")
+    args = ap.parse_args()
+    os.makedirs(args.out, exist_ok=True)
+
+    positions, uvs, faces, face_uvs = build_temple()
+    save_obj(os.path.join(args.out, "pusaka_model.obj"), positions, uvs, faces, face_uvs)
+    tex = relief_texture()
+    nbytes = write_ppm(os.path.join(args.out, "relief.ppm"), tex)
+    print(f"wrote {args.out}/pusaka_model.obj  ({len(positions)} verts, "
+          f"{len(faces)} triangles)")
+    print(f"wrote {args.out}/relief.ppm  ({tex.shape[1]}x{tex.shape[0]}, {nbytes} bytes)")
+
+
+if __name__ == "__main__":
+    main()
